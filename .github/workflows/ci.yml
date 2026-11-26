@@ -1,0 +1,61 @@
+name: Build, Test and Security Pipeline
+
+on:
+  push:
+    branches:
+      - '**'
+  schedule:
+    - cron: '0 8 * * 1'
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ЭТАП 1: СБОРКА
+      - name: Build - Install dependencies and build
+        run: |
+          npm install
+          npm run build
+
+      # ЭТАП 2: ТЕСТЫ (при падении следующие шаги не выполнятся)
+      - name: Run tests
+        run: |
+          npm test
+
+      # ЭТАП 3: ПРОВЕРКА БЕЗОПАСНОСТИ (SCA)
+      - name: Security - Check dependencies for vulnerabilities
+        id: audit
+        continue-on-error: true
+        run: |
+          echo "=== Запуск проверки уязвимостей (npm audit) ==="
+          npm audit | tee audit_output.txt
+
+          echo "" > security_report.txt
+          echo "=== ОТЧЁТ О ПРОВЕРКЕ БЕЗОПАСНОСТИ ===" >> security_report.txt
+          echo "Дата проверки: $(date)" >> security_report.txt
+          echo "Проверка: npm audit (SCA - Software Composition Analysis)" >> security_report.txt
+          echo "Статус выполнения: ${{ steps.audit.outcome }}" >> security_report.txt
+          echo "Действие с результатом: вывод сохранён в консоль и в security_report.txt, файл загружен в артефакты." >> security_report.txt
+          echo "" >> security_report.txt
+          echo "=== РЕЗУЛЬТАТ ПРОВЕРКИ ===" >> security_report.txt
+          cat audit_output.txt >> security_report.txt
+
+      # ЭТАП 4: СОХРАНЕНИЕ РЕЗУЛЬТАТА
+      - name: Save results - Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-and-test-reports
+          path: |
+            security_report.txt
+            audit_output.txt
+          retention-days: 7
